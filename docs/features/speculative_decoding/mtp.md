@@ -69,6 +69,21 @@ vllm serve XiaomiMiMo/MiMo-7B-Base \
 
 ## Notes
 
+Idle ranks may execute dummy draft forwards to participate in distributed
+communication. The legacy model runner clears the drafter's active slot mapping
+to padding slots before every dummy forward, so it cannot overwrite KV through
+addresses left by an earlier request. Real draft forwards retain their normal
+KV writes. This protection is separate from P/D KV transfer checksums and does
+not establish the cause of unrelated repetitive or corrupted output.
+
+In MRV1 `dummy_run`, `_determine_batch_execution_and_padding` returns the
+per-forward token count after CUDA-graph padding and DP coordination. That same
+`num_input_tokens` bounds the reset slot mapping, input IDs/embeddings, positions,
+hidden states and forward context. Speculative depth controls repeated forwards;
+it does not multiply this per-forward range. The range is cleared on every pass.
+The existing eager regression checks cache bytes and caller mappings; padded
+CUDA-graph execution still requires a GPU regression on the target configuration.
+
 - MTP only works for model families that support MTP in vLLM.
 - `num_speculative_tokens` controls speculative depth. A small value like `1`
   is a good default to start with.
