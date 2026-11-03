@@ -3,6 +3,7 @@
 import copy
 import multiprocessing
 import multiprocessing.connection
+import os
 import time
 import weakref
 
@@ -11,6 +12,7 @@ import zmq
 
 from vllm.config import LoggingConfig, ParallelConfig
 from vllm.logger import configure_logging, init_logger
+from vllm.process_diagnostics import coordinator_fault_handler
 from vllm.utils.network_utils import make_zmq_socket
 from vllm.utils.system_utils import get_mp_context, set_process_title
 from vllm.v1.engine import EngineCoreOutputs, EngineCoreRequestType
@@ -174,23 +176,28 @@ class DPCoordinatorProc:
         if logging_config is not None:
             configure_logging(logging_config)
 
-        coordinator = DPCoordinatorProc(
-            engine_count=engine_count,
-            min_stats_update_interval_ms=min_stats_update_interval_ms,
-            enable_wave_coordination=enable_wave_coordination,
-        )
-        try:
-            coordinator.process_input_socket(
-                front_publish_address,
-                back_output_address,
-                back_publish_address,
-                zmq_addr_pipe,
+        with coordinator_fault_handler(logger):
+            coordinator = DPCoordinatorProc(
+                engine_count=engine_count,
+                min_stats_update_interval_ms=min_stats_update_interval_ms,
+                enable_wave_coordination=enable_wave_coordination,
             )
-        except KeyboardInterrupt:
-            logger.info("DP Coordinator process exiting")
-        finally:
-            if zmq_addr_pipe is not None:
-                zmq_addr_pipe.close()
+            try:
+                coordinator.process_input_socket(
+                    front_publish_address,
+                    back_output_address,
+                    back_publish_address,
+                    zmq_addr_pipe,
+                )
+            except KeyboardInterrupt:
+                logger.info("DP Coordinator process exiting")
+            except BaseException:
+                logger.exception("DP Coordinator process crashed")
+                raise
+            finally:
+                logger.info("DP Coordinator process exiting, pid=%d", os.getpid())
+                if zmq_addr_pipe is not None:
+                    zmq_addr_pipe.close()
 
     def process_input_socket(
         self,

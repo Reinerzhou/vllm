@@ -2,6 +2,11 @@
 
 vLLM provides an HTTP server that is compatible with many interfaces!
 
+## Diagnostics
+
+✅ [Process failure diagnostics](../process_diagnostics.md) describe coordinator fault files and
+safe process-exit information in native logs.
+
 ## OpenAI-Compatible Server
 
 We currently support the following OpenAI APIs:
