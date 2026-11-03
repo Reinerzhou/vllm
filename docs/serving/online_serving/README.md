@@ -4,6 +4,9 @@ vLLM provides an HTTP server that is compatible with many interfaces!
 
 ## Diagnostics
 
+✅ [Request lifecycle JSONL](../native_observability.md) describes request IDs, reasoning timing,
+optional alerts, and independent asynchronous logs.
+
 ✅ [Process failure diagnostics](../process_diagnostics.md) describe coordinator fault files and
 safe process-exit information in native logs.
 

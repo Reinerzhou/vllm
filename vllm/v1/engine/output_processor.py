@@ -11,6 +11,13 @@ import numpy as np
 import torch
 
 from vllm.lora.request import LoRARequest
+from vllm.observability import (
+    enabled as observability_enabled,
+)
+from vllm.observability import (
+    engine_request_context,
+    record_engine_finished,
+)
 from vllm.outputs import (
     STREAM_FINISHED,
     CompletionOutput,
@@ -233,6 +240,7 @@ class RequestState:
         # EngineCoreOutput, then attached to this sequence's CompletionOutput.
         self.spec_decode_metrics: RequestSpecDecodeMetrics | None = None
 
+        self.observability_context: dict[str, Any] | None = None
         self.stats = RequestStateStats(arrival_time=arrival_time) if log_stats else None
 
         # Routed experts accumulation (prompt + sample chunks)
@@ -684,6 +692,8 @@ class OutputProcessor:
             log_stats=self.log_stats,
             stream_interval=self.stream_interval,
         )
+        if observability_enabled():
+            req_state.observability_context = engine_request_context(request)
         self.request_states[request_id] = req_state
         if parent_req:
             self.parent_requests[parent_req.request_id] = parent_req
@@ -731,6 +741,7 @@ class OutputProcessor:
         engine_core_timestamp: float | None = None,
         iteration_stats: IterationStats | None = None,
         weight_version: str | None = None,
+        engine_idx: int = 0,
     ) -> OutputProcessorOutput:
         """Process the EngineCoreOutputs:
         1) Compute stats for logging
@@ -883,7 +894,7 @@ class OutputProcessor:
 
                     # Track per-request stats
                     self._update_stats_from_finished(
-                        req_state, finish_reason, iteration_stats
+                        req_state, finish_reason, iteration_stats, engine_idx
                     )
                     if self.tracing_enabled:
                         self.do_tracing(engine_core_output, req_state, iteration_stats)
@@ -1026,6 +1037,7 @@ class OutputProcessor:
         req_state: RequestState,
         finish_reason: FinishReason | None,
         iteration_stats: IterationStats | None,
+        engine_idx: int = 0,
     ):
         if iteration_stats is None:
             return
@@ -1040,6 +1052,12 @@ class OutputProcessor:
             req_stats=req_state.stats,
             num_cached_tokens=req_state.num_cached_tokens,
         )
+        if req_state.observability_context is not None:
+            record_engine_finished(
+                iteration_stats.finished_requests[-1],
+                engine_idx,
+                req_state.observability_context,
+            )
         self.lora_states.request_finished(req_state.request_id, req_state.lora_name)
 
         ParentRequest.observe_finished_request(

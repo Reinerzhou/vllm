@@ -24,6 +24,15 @@ steps:
   - tests/test_logger
   - tests/test_process_diagnostics.py
   - vllm/process_diagnostics.py
+  - vllm/observability.py
+  - vllm/entrypoints/launchers/app.py
+  - vllm/distributed/kv_transfer/kv_connector/v1/nixl/
+  - vllm/v1/core/sched/
+  - vllm/v1/engine/
+  - vllm/v1/metrics/loggers.py
+  - vllm/v1/worker/gpu_worker.py
+  - tests/v1/test_native_observability.py
+  - tests/v1/native_observability_cases.json
   - vllm/v1/engine/coordinator.py
   - vllm/v1/utils.py
   - tests/test_vllm_port
@@ -37,6 +46,7 @@ steps:
     test_config.py
     test_logger.py
     test_process_diagnostics.py
+    v1/test_native_observability.py
     test_vllm_port.py
     jit_monitor/test_hooks.py
     jit_monitor/test_hooks_gpu.py
@@ -58,6 +68,7 @@ steps:
   source_file_dependencies:
     - vllm/v1/engine/
     - tests/v1/engine/
+    - vllm/observability.py
     - tests/v1/test_tensor_ipc_queue.py
   commands:
     - pytest -v -s v1/engine/test_preprocess_error_handling.py

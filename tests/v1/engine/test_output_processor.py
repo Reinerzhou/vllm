@@ -2060,3 +2060,85 @@ def test_weight_version_spans(output_kind: RequestOutputKind, steps, expected):
     final = queue.get_nowait()
     assert final is not None and final.finished
     assert final.outputs[0].weight_versions == [WeightVersionSpan(*s) for s in expected]
+
+
+def test_observability_context_lifetime_and_out_of_order_completion(tmp_path):
+    """Real request states own correlation even without stats or on abort/error."""
+    import os
+    import subprocess
+    import sys
+
+    program = r"""
+import gc
+import json
+import time
+import weakref
+from pathlib import Path
+import torch
+from vllm import PoolingParams
+from vllm.observability import bind_engine_request, runtime
+from vllm.v1.engine import EngineCoreRequest, EngineCoreOutput, FinishReason
+from vllm.v1.engine.output_processor import OutputProcessor
+from vllm.v1.metrics.stats import IterationStats
+
+for log_stats in (False, True):
+    processor = OutputProcessor(tokenizer=None, log_stats=log_stats)
+    refs = []
+    for idx in range(12):
+        request = EngineCoreRequest(
+            request_id=f"{log_stats}-{idx}", external_req_id="shared-external-id",
+            prompt_token_ids=[1, 2], mm_features=None, arrival_time=time.time(),
+            lora_request=None, cache_salt=None, data_parallel_rank=None,
+            sampling_params=None, pooling_params=PoolingParams(task="embed"),
+            trace_headers={"x-native-request-id": f"canonical-{log_stats}-{idx}"},
+        )
+        # Match AsyncLLM's ordering: local registration precedes engine submission.
+        processor.add_request(request, prompt=None)
+        bind_engine_request(request)
+        refs.append(weakref.ref(processor.request_states[request.request_id]))
+    # Normal completion, error, and cancellation all release request-owned context.
+    for idx in reversed(range(12)):
+        request_id = f"{log_stats}-{idx}"
+        if idx % 3 == 0:
+            processor.abort_requests([request_id], internal=True)
+        else:
+            processor.process_outputs(
+                [EngineCoreOutput(
+                    request_id=request_id, new_token_ids=[],
+                    pooling_output=torch.tensor([1.0]),
+                    finish_reason=(
+                        FinishReason.ERROR if idx % 3 == 1 else FinishReason.STOP
+                    ),
+                )],
+                engine_core_timestamp=time.monotonic(),
+                iteration_stats=IterationStats() if log_stats else None,
+                engine_idx=7,
+            )
+    gc.collect()
+    assert all(ref() is None for ref in refs)
+    assert not processor.has_unfinished_requests()
+# A failed send after bind has no independent global ownership.
+import vllm.observability as obs
+assert not getattr(obs, "_contexts", {})
+runtime().close()
+rows = [json.loads(line) for p in Path(__import__("os").environ[
+    "OBSERVABILITY_LOG_DIR"]).rglob("*.jsonl") for line in p.read_text().splitlines()]
+finished = [row for row in rows if row["event"] == "engine_request_finished"]
+assert len(finished) == 8, finished
+for row in finished:
+    assert row["request_id"] == "canonical-" + row["engine_request_id"], row
+    assert row["engine_idx"] == 7, row
+print("24 real requests: normal/error/abort; stats ON/OFF; reverse completion")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        env={
+            **os.environ,
+            "OBSERVABILITY_ENABLED": "1",
+            "OBSERVABILITY_LOG_DIR": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
