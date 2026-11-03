@@ -10,6 +10,12 @@ import pytest_asyncio
 from tests.utils import RemoteOpenAIServer
 
 MODEL_NAME = "Qwen/Qwen3-0.6B"
+SERVED_MODEL_NAME = "claude-3-7-sonnet-latest"
+
+
+@pytest.fixture(scope="module")
+def served_model_name():
+    return SERVED_MODEL_NAME
 
 
 @pytest.fixture(scope="module")
@@ -23,7 +29,7 @@ def server():
         "--tool-call-parser",
         "hermes",
         "--served-model-name",
-        "claude-3-7-sonnet-latest",
+        SERVED_MODEL_NAME,
     ]
 
     with RemoteOpenAIServer(MODEL_NAME, args) as remote_server:
@@ -47,6 +53,42 @@ async def test_simple_messages(client: anthropic.AsyncAnthropic):
     assert resp.role == "assistant"
 
     print(f"Anthropic response: {resp.model_dump_json()}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ignore_eos", [False, True])
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_ignore_eos_controls_generation_length(
+    client: anthropic.AsyncAnthropic,
+    ignore_eos: bool,
+    streaming: bool,
+    served_model_name: str,
+):
+    """Messages must honor the optional fixed-length workload control."""
+    request = {
+        "model": served_model_name,
+        "messages": [{"role": "user", "content": "Reply with only the digit 4."}],
+        "max_tokens": 32,
+        "extra_body": {
+            "temperature": 0,
+            "ignore_eos": ignore_eos,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+    }
+    if streaming:
+        async with client.messages.stream(**request) as stream:
+            response = await stream.get_final_message()
+    else:
+        response = await client.messages.create(**request)
+    if ignore_eos:
+        assert response.stop_reason == "max_tokens", (
+            response.stop_reason,
+            response.usage.output_tokens,
+        )
+        assert response.usage.output_tokens == 32
+    else:
+        assert response.stop_reason == "end_turn"
+        assert response.usage.output_tokens < 32
 
 
 @pytest.mark.asyncio

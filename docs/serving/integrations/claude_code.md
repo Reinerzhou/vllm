@@ -71,6 +71,15 @@ Once Claude Code launches, try a simple prompt to verify the connection:
 
 If the model responds correctly, your setup is working. You can now use Claude Code with your vLLM-served model for coding tasks.
 
+## vLLM generation extensions
+
+The Messages API accepts the optional vLLM-specific `ignore_eos` boolean.
+It defaults to `false`, preserving normal end-of-turn behavior. For workloads
+that require a fixed generation budget, pass `extra_body={"ignore_eos": true}`
+through the Anthropic SDK. Generation continues past EOS until `max_tokens`
+or another configured stop condition. This extension applies to both streaming
+and non-streaming requests and is not part of the Anthropic API specification.
+
 ## Troubleshooting
 
 **Connection refused**: Ensure vLLM is running and accessible at the specified URL. Check that the port matches.
