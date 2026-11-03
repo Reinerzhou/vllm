@@ -4,6 +4,7 @@
 from dataclasses import dataclass
 
 import pytest
+import torch
 
 from tests.utils import multi_gpu_only, single_gpu_only
 from vllm import SamplingParams
@@ -19,10 +20,73 @@ from ..utils import (
     compute_acceptance_rate,
     evaluate_llm_for_gsm8k,
     get_instruct_coder_messages,
+    get_spec_decode_metric_value,
     get_test_prompts,
     greedy_sampling,
     stochastic_sampling,
 )
+
+
+def _dummy_draft_cache_state(worker) -> dict[str, bool | int]:
+    proposer = worker.model_runner.drafter
+    layers = worker.vllm_config.compilation_config.static_forward_context
+    names = proposer._draft_attn_layer_names
+    caches = {name: layers[name].kv_cache for name in names}
+    before = {name: cache.view(torch.uint8).clone() for name, cache in caches.items()}
+    previous_slots = int((proposer._slot_mapping_buffer[:3] >= 0).sum())
+    incoming = {
+        name: torch.full((3,), -1, dtype=torch.int64, device=cache.device)
+        for name, cache in caches.items()
+    }
+    proposer.dummy_run(3, use_cudagraphs=False, slot_mappings=incoming)
+    torch.accelerator.synchronize()
+    return {
+        "previous_valid_slots": previous_slots,
+        "compared_bytes": sum(cache.numel() for cache in before.values()),
+        "cache_unchanged": all(
+            torch.equal(before[name], cache.view(torch.uint8))
+            for name, cache in caches.items()
+        ),
+        "caller_mapping_unchanged": all(
+            bool((slots == -1).all()) for slots in incoming.values()
+        ),
+    }
+
+
+@single_gpu_only
+def test_dummy_draft_preserves_cached_kv(monkeypatch, vllm_runner):
+    """An idle legacy drafter must preserve KV left by real generation."""
+    monkeypatch.setenv("VLLM_USE_V2_MODEL_RUNNER", "0")
+    monkeypatch.setenv("VLLM_ALLOW_INSECURE_SERIALIZATION", "1")
+    monkeypatch.setenv("VLLM_BATCH_INVARIANT", "1")
+    model = "Qwen/Qwen3-0.6B"
+    with vllm_runner(
+        model,
+        max_model_len=128,
+        max_num_seqs=2,
+        max_num_batched_tokens=128,
+        kv_cache_memory_bytes=128 << 20,
+        gpu_memory_utilization=0.04,
+        enable_prefix_caching=True,
+        enforce_eager=True,
+        disable_log_stats=False,
+        speculative_config={"model": model, "num_speculative_tokens": 3},
+    ) as runner:
+        params = SamplingParams(temperature=0, max_tokens=12, ignore_eos=True)
+        reference = runner.llm.generate(["The capital of France is"], params)
+        assert (
+            get_spec_decode_metric_value(
+                runner.llm.get_metrics(), "vllm:spec_decode_num_drafts"
+            )
+            > 0
+        )
+        state = runner.llm.collective_rpc(_dummy_draft_cache_state)[0]
+        assert state["previous_valid_slots"] > 0
+        assert state["compared_bytes"] > 0
+        assert state["cache_unchanged"], state
+        assert state["caller_mapping_unchanged"], state
+        repeated = runner.llm.generate(["The capital of France is"], params)
+        assert repeated[0].outputs[0].token_ids == reference[0].outputs[0].token_ids
 
 
 # Tomas R: TODO: Improve naming of this class and

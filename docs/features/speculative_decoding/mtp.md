@@ -69,6 +69,13 @@ vllm serve XiaomiMiMo/MiMo-7B-Base \
 
 ## Notes
 
+Idle ranks may execute dummy draft forwards to participate in distributed
+communication. The legacy model runner clears the drafter's active slot mapping
+to padding slots before every dummy forward, so it cannot overwrite KV through
+addresses left by an earlier request. Real draft forwards retain their normal
+KV writes. This protection is separate from P/D KV transfer checksums and does
+not establish the cause of unrelated repetitive or corrupted output.
+
 - MTP only works for model families that support MTP in vLLM.
 - `num_speculative_tokens` controls speculative depth. A small value like `1`
   is a good default to start with.

@@ -1637,6 +1637,9 @@ class SpecDecodeBaseProposer:
                     )
                 )
 
+            # Dummy passes must not write through a previous request's draft slots.
+            self._slot_mapping_buffer[:num_input_tokens].fill_(PADDING_SLOT_ID)
+
             # Make sure to use EAGLE's own buffer during cudagraph capture.
             if (
                 self._draft_attn_layer_names
