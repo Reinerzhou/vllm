@@ -1,4 +1,16 @@
 <!-- markdownlint-disable MD001 MD041 -->
+
+> **Online serving fork (v0.33.0):** NIXL wire protocol **18** is required on both
+> P and D. This build cannot interoperate with upstream v0.33.0 protocol **15**
+> or the previous local protocol **17**, even with checksum disabled. Upgrade both
+> endpoints together and use the matching Router. KV checksums default to enabled;
+> set `kv_transfer_config.enable_kv_checksum=false` explicitly on both endpoints to
+> disable them. [Checksum configuration and limits](docs/features/disagg_prefill.md)
+> and [lifecycle logging](docs/serving/native_observability.md) describe this fork.
+> Logging ON/OFF results do not measure checksum overhead. Current-release checksum
+> ON/OFF P99 overhead remains unquantified; earlier-main measurements are not a
+> release acceptance result. See [validation scope](docs/serving/online_fork_validation.md).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-dark.png">

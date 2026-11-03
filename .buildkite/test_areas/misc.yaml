@@ -302,6 +302,7 @@ steps:
     - vllm/config/
     - vllm/distributed/
     - "!vllm/distributed/kv_transfer/"
+    - vllm/distributed/kv_transfer/kv_checksum/
     - vllm/engine/
     - vllm/inputs/
     - vllm/lora/

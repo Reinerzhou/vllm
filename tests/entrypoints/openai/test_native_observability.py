@@ -116,7 +116,10 @@ async def test_lifecycle_preserves_multi_choice_output_and_chunked_logprobs(tmp_
                 stream = await client.chat.completions.create(
                     model=MODEL,
                     messages=[{"role": "user", "content": "Say hello."}],
-                    temperature=0,
+                    # n=2 requires non-greedy sampling; temperature=0 only permits n=1.
+                    # Seed fixes the sampled streams for the logging ON/OFF comparison.
+                    temperature=1,
+                    seed=0,
                     max_tokens=4,
                     n=2,
                     stream=True,

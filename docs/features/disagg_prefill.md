@@ -17,6 +17,42 @@ Two main reasons:
 
 ## Usage example
 
+### KV transfer checksums (experimental)
+
+`kv_transfer_config.enable_kv_checksum` defaults to `true`. Both producer and
+consumer compute GPU checksums of transferred model KV
+and verify them before accepting a remote load. For NIXL pull, the proxy must
+forward the entire producer `kv_transfer_params`, including `kv_checksums`.
+For `MultiConnector`, set the flag on the outer KV transfer configuration.
+To disable verification, explicitly set `"enable_kv_checksum": false` on both sides.
+
+```json
+{"kv_connector":"NixlConnector","kv_role":"kv_consumer","enable_kv_checksum":true,"kv_load_failure_policy":"fail"}
+```
+
+This requires Model Runner V2 and Triton on a supported GPU. Context parallelism
+(PCP or DCP greater than one) is rejected. The checksum is a positional 64-bit
+weighted sum, not a cryptographic digest, CRC-64, or Adler-32. Supported model
+KV groups are checked; speculative drafter KV and unused token padding are
+excluded. Missing, malformed, incompatible, or mismatching checksums make the
+remote load fail under the configured KV load failure policy. Use `fail` for
+diagnosis instead of recomputing and concealing the failure.
+
+The producer checks its checksum allocation against the computed block table
+published to the connector. The consumer requires coverage of every loaded valid
+chunk, including its tail; comparing only the common prefix is insufficient.
+NIXL pull sends checksums in `kv_transfer_params.kv_checksums` through the router,
+separately from the KV READ. This v0.33.0-based build uses local NIXL protocol version 18 on both peers,
+even when checksums are disabled. Do not mix it with the official release
+protocol 15 or the earlier main-based local protocol 17.
+
+This checks P/D transfer, not Mooncake Store integrity. Store object CRC-64
+diagnostics are enabled separately in compatible Mooncake clients and masters
+with `MOONCAKE_STORE_CHECKSUM=1` before client creation. They add host-copy cost,
+do not verify old objects without a checksum or range reads, and cannot prove
+that an object belongs to the expected prefix. Checksums do not replace safe
+block lifetimes or protect against writes arriving after verification.
+
 Now supports 9 types of connectors:
 
 - **ExampleConnector**: refer to [examples/disaggregated/example_connector/run.sh](../../examples/disaggregated/example_connector/run.sh) for the example usage of ExampleConnector disaggregated prefilling.

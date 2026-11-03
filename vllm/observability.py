@@ -88,6 +88,7 @@ _ESSENTIAL_ALERTS = frozenset(
         "gpu_fault",
         "kv_transport_failed",
         "kv_pull_failed",
+        "kv_checksum_failed",
         "corrupted_generation",
         "log_queue_full",
         "log_io_failed",

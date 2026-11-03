@@ -6,6 +6,24 @@ For feature compatibility details (supported model architectures, TP configurati
 
 ## Prerequisites
 
+### Optional KV Checksums
+
+Set `"enable_kv_checksum": true` in the outer KV transfer config on both
+producer and consumer to verify loaded KV blocks before decoding. This is
+enabled by default and requires the V2 model runner, Triton, and PCP/DCP size
+one. With `MultiConnector`, put this option on the outer config.
+Use the same checksum-capable build on both sides and
+`"kv_load_failure_policy": "fail"` on the consumer for strict rejection.
+To disable checksums, set `"enable_kv_checksum": false` on both sides.
+
+Attention checksums include every valid byte of each token's KV cell. Each
+cache uses the widest whole-cell piece width among 8, 4, 2, and 1 bytes;
+132-byte FP8 indexer cells use 4-byte pieces. This choice is independent of
+row padding or memory layout, so producer and consumer layouts remain
+comparable. Unsupported groups are reported as unverified rather than passed.
+The checksum excludes speculative drafter KV and unused padding. It detects
+data corruption probabilistically and is not a cryptographic digest.
+
 ### Installation
 
 Install the NIXL library: `uv pip install nixl`, as a quick start on Nvidia platform.
