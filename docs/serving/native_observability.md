@@ -73,6 +73,15 @@ clocks. Cross-host ordering requires clock synchronization. `first_output` inclu
 visible reasoning, content or tool calls at the server; this is not client network arrival time.
 No generated text is written to lifecycle logs.
 
+✅ With KV checksum enabled separately, scheduler handoffs also emit
+`kv_checksum_generated`, `kv_checksum_unavailable`, `kv_checksum_verified` and
+`kv_checksum_failed` with the same request context. These summarize group/block counts,
+covered tokens and fixed failure reasons; they never include checksum arrays or KV data.
+No per-block records are added. A verified event covers the supported loaded groups,
+excluding drafter KV and unused padding; it does not attest all model state.
+Checksum failures use the essential alert channel. See
+[disaggregated prefill](../features/disagg_prefill.md) for checksum configuration.
+
 ## Alerts
 
 ✅ For optional Feishu or generic webhook alerts, set `OBSERVABILITY_ALERT_CONFIG` to a private

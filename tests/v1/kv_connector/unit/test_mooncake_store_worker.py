@@ -2417,10 +2417,11 @@ def test_recv_thread_reports_unsplittable_key_larger_than_budget():
     assert thread.get_and_clear_block_ids_with_load_errors() == {0, 1, 2}
 
 
-def test_recv_thread_partial_load_failure_reports_block_ids_without_hma():
+@pytest.mark.parametrize("error_code", [-1, -801])
+def test_recv_thread_partial_load_failure_reports_block_ids_without_hma(error_code):
     store = MagicMock()
     # First key fails, second succeeds.
-    store.batch_get_into_multi_buffers.return_value = [-1, 0]
+    store.batch_get_into_multi_buffers.return_value = [error_code, 0]
     thread = _make_store_recving_thread(store)
 
     thread._handle_request(_make_load_req("req-a", [b"h0", b"h1"], token_len=32))
@@ -2430,9 +2431,10 @@ def test_recv_thread_partial_load_failure_reports_block_ids_without_hma():
     assert thread.get_and_clear_finished_requests() == {"req-a"}
 
 
-def test_recv_thread_partial_load_failure_reports_request_with_hma():
+@pytest.mark.parametrize("error_code", [-1, -801])
+def test_recv_thread_partial_load_failure_reports_request_with_hma(error_code):
     store = MagicMock()
-    store.batch_get_into_multi_buffers.return_value = [-1, 0]
+    store.batch_get_into_multi_buffers.return_value = [error_code, 0]
     thread = _make_store_recving_thread(store, is_hma_required=True)
 
     thread._handle_request(_make_load_req("req-a", [b"h0", b"h1"], token_len=32))

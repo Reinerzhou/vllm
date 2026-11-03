@@ -1091,6 +1091,21 @@ class SlidingWindowMLASpec(SlidingWindowSpec):
 
 
 @dataclass(frozen=True)
+class MambaStateSplit:
+    """How TP shards one Mamba state.
+
+    A segment of global size ``G`` is cut into ``G * replicas / tp_size``-sized
+    shards, the same shard on ``replicas`` consecutive ranks, and rank ``r`` holds
+    shard ``r // replicas`` of every segment.
+    """
+
+    # The local dimension the state is split along.
+    axis: int
+    # The run of segments along ``axis``, each ``(local_size, replicas)``.
+    segments: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
 class MambaSpec(KVCacheSpec):
     shapes: tuple[tuple[int, ...], ...]
     dtypes: tuple[torch.dtype, ...]
@@ -1105,6 +1120,8 @@ class MambaSpec(KVCacheSpec):
     # False: the state is sharded across TP ranks (e.g. GDN). True: every TP
     # rank holds the full state (e.g. the replicated PLE conv state).
     tp_replicated: bool = False
+    # How TP shards the leading states, if the layer describes it.
+    state_splits: tuple[MambaStateSplit, ...] | None = None
 
     @property
     def state_content_size_bytes(self) -> int:
@@ -1520,6 +1537,14 @@ class KVCacheGroupSpec:
     # source group after a connector load.
     enable_kv_transfer: bool = True
     role: KVCacheGroupRole = KVCacheGroupRole.DEFAULT
+
+
+def sliding_window_transfer_blocks(spec: KVCacheSpec) -> int:
+    """The trailing blocks of a group a P/D KV transfer keeps: one more than
+    a sliding window spans, as the window need not align with blocks, or 0 to
+    keep all of them."""
+    window = get_kv_cache_spec_sliding_window(spec)
+    return cdiv(window, spec.block_size) + 1 if window else 0
 
 
 @dataclass

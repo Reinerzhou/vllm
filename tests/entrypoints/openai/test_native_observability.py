@@ -116,7 +116,8 @@ async def test_lifecycle_preserves_multi_choice_output_and_chunked_logprobs(tmp_
                 stream = await client.chat.completions.create(
                     model=MODEL,
                     messages=[{"role": "user", "content": "Say hello."}],
-                    temperature=0,
+                    temperature=1,
+                    seed=0,
                     max_tokens=4,
                     n=2,
                     stream=True,
