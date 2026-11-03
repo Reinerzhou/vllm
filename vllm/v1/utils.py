@@ -28,6 +28,7 @@ from torch.autograd.profiler import record_function
 
 import vllm.envs as envs
 from vllm.logger import init_logger
+from vllm.process_diagnostics import process_exit_details
 from vllm.usage.usage_lib import UsageContext, is_usage_stats_enabled, usage_message
 from vllm.utils.network_utils import ZmqListener, get_open_zmq_ipc_path, get_tcp_uri
 from vllm.utils.system_utils import decorate_logs, kill_process_tree, set_process_title
@@ -580,6 +581,14 @@ def wait_for_completion_or_failure(
             # Process any terminated processes
             for sentinel in ready_sentinels:
                 proc = sentinel_to_proc.pop(sentinel)
+
+                if proc is not None and proc.pid is not None:
+                    log_exit = logger.info if proc.exitcode == 0 else logger.error
+                    log_exit(
+                        "Terminated process details: name=%s details=%s",
+                        proc.name,
+                        process_exit_details(proc.pid, proc.exitcode),
+                    )
 
                 # Check if process exited with error
                 if proc is not None and proc.exitcode != 0:
