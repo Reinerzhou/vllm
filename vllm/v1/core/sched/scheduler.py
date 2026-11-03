@@ -31,6 +31,12 @@ from vllm.multimodal import MULTIMODAL_REGISTRY, MultiModalRegistry
 from vllm.multimodal.encoder_budget import MultiModalBudget
 from vllm.multimodal.inputs import MultiModalKwargsItem
 from vllm.multimodal.utils import get_mm_features_in_window
+from vllm.observability import (
+    annotate_schedule,
+    decode_request_finished,
+    kv_scheduler_event,
+    queued_request,
+)
 from vllm.outputs import RequestError
 from vllm.utils.math_utils import cdiv
 from vllm.v1.core.encoder_cache_manager import (
@@ -1520,6 +1526,7 @@ class Scheduler(SchedulerInterface):
                     # here would start the cadence from a step that did none.
                     # If loading async, allocate memory and put request
                     # into the WAITING_FOR_REMOTE_KV state.
+                    kv_scheduler_event("kv_wait_started", request)
                     request.status = RequestStatus.WAITING_FOR_REMOTE_KVS
                     # Set num_computed_tokens even though KVs are not yet loaded.
                     # request.num_computed_tokens will not be used anywhere until
@@ -1779,6 +1786,7 @@ class Scheduler(SchedulerInterface):
         if self.defer_block_free and total_num_scheduled_tokens > 0:
             self.sched_step_seq += 1
 
+        annotate_schedule(scheduler_output, self.requests)
         with record_function_or_nullcontext("schedule: update_after_schedule"):
             self._update_after_schedule(scheduler_output)
         return scheduler_output
@@ -2473,6 +2481,8 @@ class Scheduler(SchedulerInterface):
                 finish_reason = request.get_finished_reason()
                 finished = self._handle_stopped_request(request)
                 if finished:
+                    if new_token_ids:
+                        decode_request_finished(request, scheduler_output)
                     kv_transfer_params, ec_transfer_params = self._free_request(request)
                     if (
                         prefill_stats is not None
@@ -2951,6 +2961,7 @@ class Scheduler(SchedulerInterface):
                 request.spec_decode_metrics = RequestSpecDecodeMetrics.new(
                     self.num_spec_tokens
                 )
+            queued_request(request)
             if self.connector is not None:
                 self.connector.on_new_request(request)
                 kv_transfer_params = request.kv_transfer_params
@@ -3514,6 +3525,8 @@ class Scheduler(SchedulerInterface):
             request.num_computed_tokens -= num_replay_tokens
         elif request.num_computed_tokens == request.num_tokens:
             request.num_computed_tokens = request.num_tokens - 1
+
+        kv_scheduler_event("kv_ready_for_decode", request, kv_load_failed=load_failed)
         self.finished_recving_kv_req_ids.remove(request.request_id)
 
     def _handle_blocked_waiting_request(self, request: Request) -> bool:

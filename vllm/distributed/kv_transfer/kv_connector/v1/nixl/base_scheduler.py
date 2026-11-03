@@ -29,6 +29,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.nixl.metadata import (
 )
 from vllm.distributed.kv_transfer.kv_connector.v1.nixl.utils import zmq_ctx
 from vllm.logger import init_logger
+from vllm.observability import kv_meta_context
 from vllm.platforms import current_platform
 from vllm.utils.math_utils import cdiv
 from vllm.utils.network_utils import make_zmq_path
@@ -498,6 +499,8 @@ class NixlBaseConnectorScheduler:
                 local_num_computed_blocks=cached,
                 awaiting_kvs=awaiting_kvs,
             )
+
+            kv_meta_context(meta.reqs_to_recv[req_id], req)
 
         if self.use_host_buffer:
             self._build_save_meta(meta, scheduler_output)

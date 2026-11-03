@@ -275,6 +275,9 @@ def _configure_vllm_root_logger(config: "LoggingConfig | None" = None) -> None:
 
     if logging_config:
         dictConfig(logging_config)
+        from vllm.observability import configure_logging as configure_observability
+
+        configure_observability()
 
     # Transformers uses httpx to access the Hugging Face Hub. httpx is quite verbose,
     # so we set its logging level to WARNING when vLLM's logging level is INFO.

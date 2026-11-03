@@ -73,6 +73,7 @@ from vllm.model_executor.model_loader.weight_checksum import (
 )
 from vllm.model_executor.warmup.kernel_warmup import kernel_warmup
 from vllm.multimodal.gpu_ipc_memory import reserve_mm_ipc_gpu_memory
+from vllm.observability import worker_execution
 from vllm.platforms import current_platform
 from vllm.profiler.wrapper import (
     create_graph_capture_profiler,
@@ -1356,6 +1357,7 @@ class Worker(WorkerBase):
                 comm_postprocess=comm_postprocess,
             )
 
+        worker_execution(scheduler_output, self.rank)
         with self.annotate_profile(scheduler_output):
             output = self.model_runner.execute_model(
                 scheduler_output, intermediate_tensors

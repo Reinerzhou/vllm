@@ -40,6 +40,7 @@ from vllm.inputs import EngineInput, PromptType
 from vllm.logger import configure_logging_if_needed, init_logger
 from vllm.lora.request import LoRARequest
 from vllm.multimodal import MULTIMODAL_REGISTRY, MultiModalRegistry
+from vllm.observability import bind_engine_request
 from vllm.outputs import STREAM_FINISHED, PoolingRequestOutput, RequestOutput
 from vllm.pooling_params import PoolingParams
 from vllm.profiler.wrapper import TorchProfilerWrapper, create_frontend_profiler
@@ -556,6 +557,7 @@ class AsyncLLM(EngineClient):
                 )
 
             for child_request in child_requests:
+                bind_engine_request(child_request)
                 await self.engine_core.add_request_async(child_request)
                 if self.log_requests:
                     logger.info("Added request %s.", child_request.request_id)
@@ -581,6 +583,8 @@ class AsyncLLM(EngineClient):
         self.output_processor.add_request(request, prompt, parent_req, index, queue)
 
         # Add the EngineCoreRequest to EngineCore (separate process).
+
+        bind_engine_request(request)
         await self.engine_core.add_request_async(request)
 
         if self.log_requests:
@@ -984,6 +988,8 @@ class AsyncLLM(EngineClient):
             data_parallel_rank=data_parallel_rank,
             abort_immediately=True,
         )
+
+        bind_engine_request(request)
         await self.engine_core.add_request_async(request)
 
     async def pause_generation(

@@ -52,5 +52,10 @@ def build_app(
 
     init_exception_handler(app)
     init_entrypoints_middleware(args, app, supported_tasks)
+    from vllm.observability import RequestObservabilityMiddleware, enabled, runtime
+
+    if enabled():
+        runtime()
+        app.add_middleware(RequestObservabilityMiddleware)
     app = sagemaker_standards_bootstrap(app)
     return app
