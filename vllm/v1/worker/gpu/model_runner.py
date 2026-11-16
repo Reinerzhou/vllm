@@ -2331,6 +2331,12 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 )
             if num_spec_tokens < self.num_speculative_steps:
                 draft_tokens[:, num_spec_tokens:] = -1
+            if self.pcp_manager is not None:
+                self.pcp_manager.sync_drafts(
+                    draft_tokens,
+                    input_batch.idx_mapping,
+                    getattr(self.speculator, "draft_logits", None),
+                )
             self.req_states.draft_tokens[input_batch.idx_mapping] = draft_tokens
             if self.adaptive_verification is not None:
                 self.adaptive_verification.record_confidences(
