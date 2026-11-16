@@ -1704,6 +1704,17 @@ class MooncakeStoreWorker:
 
     def _init_lookup_key_prefixes(self) -> None:
         def rank_namespaces(factor: int) -> tuple[tuple[int, int, int, int], ...]:
+            if (
+                self.tp_size == 1
+                and self.pcp_size > 1
+                and self.dcp_size == self.pcp_size
+            ):
+                # TP1 PCP+DCP uses one distinct DCP rank per PCP rank.
+                return tuple(
+                    (0, pcp_rank, pcp_rank, pp_rank)
+                    for pcp_rank in range(self.pcp_size)
+                    for pp_rank in range(self.pp_size)
+                )
             if self.dcp_size > 1:
                 # DCP is a TP subdivision: dcp_rank == tp_rank % dcp_size.
                 return tuple(
